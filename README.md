@@ -18,6 +18,8 @@ Bubble, Cocktail Shaker, Odd-Even, Gnome, Comb, Selection, Cycle, Insertion, Pan
 
 Bozo·Bogobogo·Bogo는 끝나지 않아 10초 뒤 포기함. 마지막 Bogo 뒤 종료.
 
+Radix(LSD)는 조각마다 오름차순 랜덤 10자리 키를 줘 10패스로 정렬함. 마지막 패스 전까지는 섞인 채로 보임.
+
 ## General 모드
 
 38종이 많을 때 학부에서 배우는 대표 정렬만 보는 모드. Controls 창 General 버튼으로 켜고 끔(켜지면 파란색). 켜면 정렬 목록, `<` `>`, 자동 재생이 아래 12종만 돌고 Bogo 뒤 종료함.
