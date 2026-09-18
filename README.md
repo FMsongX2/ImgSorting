@@ -12,6 +12,12 @@
 
 Controls 창에서 이미지·WAV 불러오기, 시작·정지, 정렬 선택.
 
+## 정렬 38종 (재생 순서)
+
+Bubble, Cocktail Shaker, Odd-Even, Gnome, Comb, Selection, Cycle, Insertion, Pancake, Merge, Block Merge(WikiSort), In-Place Merge, Tim, Patience, Strand, Quick, PDQ(Pattern-defeating Quicksort), Tournament, Tree, Heap, Intro, Smooth, Shell, Counting, Pigeonhole, Bucket, Flash, Radix(MSD), Radix(in-place, 이진 MSD), Radix(LSD), Gravity, Bitonic, Stooge, Slow, Stalin, Bozo, Bogobogo, Bogo
+
+Bozo·Bogobogo·Bogo는 끝나지 않아 10초 뒤 포기함. 마지막 Bogo 뒤 종료.
+
 ## Podman (Linux)
 
 저장소를 받은 뒤 그 폴더(`CMakeLists.txt`가 있는 곳)에서 실행.
