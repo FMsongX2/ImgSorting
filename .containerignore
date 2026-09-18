@@ -1,0 +1,6 @@
+build/
+.cache/
+Audio/
+Images/
+*.raw
+.DS_Store
