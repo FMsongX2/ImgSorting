@@ -40,7 +40,7 @@ constexpr float kPitchSpread = 0.05f;
 constexpr float kSyllableGapRatio = 0.02f;
 constexpr float kSyllableGapSeconds = 0.02f;
 constexpr float kMaxSyllableSeconds = 1.5f;
-constexpr float kControlWidth = 560.f, kControlHeight = 144.f;
+constexpr float kControlWidth = 560.f, kControlHeight = 180.f;
 constexpr int kListColumns = 3;
 constexpr float kListItemW = (kControlWidth - 8.f * (kListColumns + 1)) / kListColumns;
 constexpr float kListItemH = 22.f;
@@ -140,6 +140,7 @@ struct SwapSound {
     size_t syllableEnd = 0;
     Uint64 lastTriggerNs = 0;
     std::mt19937 rng{std::random_device{}()};
+    float volume = 1.f;
 
     void open() {
         device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr);
@@ -241,6 +242,10 @@ struct SwapSound {
         SDL_PutAudioStreamData(stream, samples.data(), static_cast<int>(count * sizeof(float)));
         SDL_FlushAudioStream(stream);
     }
+    void setVolume(float v) {
+        volume = v;
+        SDL_SetAudioDeviceGain(device, v * v);
+    }
     bool idle() const {
         if (finale && SDL_GetAudioStreamQueued(finale) > 0) return false;
         for (SDL_AudioStream* voice : voices)
@@ -268,6 +273,7 @@ struct Button {
 };
 
 constexpr SDL_FRect kSortNameRow{56, 52, 448, 40};
+constexpr SDL_FRect kVolumeTrack{96, 144, 392, 28};
 const Button kButtons[] = {
     {{8, 8, 164, 36}, "Import Image", Action::ImportImage},
     {{180, 8, 164, 36}, "Import Audio", Action::ImportAudio},
@@ -472,7 +478,9 @@ void setListOpen(SDL_Window* window, bool open, bool general) {
     if (y + h > screenBottom) SDL_SetWindowPosition(window, x, std::max(usable.y + top, screenBottom - h));
 }
 
-void drawControlWindow(SDL_Window* window, SDL_Renderer* renderer, int current, bool listOpen, bool general) {
+float volumeAt(float x) { return std::clamp((x - kVolumeTrack.x) / kVolumeTrack.w, 0.f, 1.f); }
+
+void drawControlWindow(SDL_Window* window, SDL_Renderer* renderer, int current, bool listOpen, bool general, float volume) {
     const float density = SDL_GetWindowPixelDensity(window);
     SDL_SetRenderScale(renderer, density, density);
     SDL_SetRenderDrawColor(renderer, 32, 32, 36, 255);
@@ -502,6 +510,23 @@ void drawControlWindow(SDL_Window* window, SDL_Renderer* renderer, int current, 
     SDL_SetRenderDrawColor(renderer, 170, 170, 180, 255);
     drawText(renderer, density, kSortNameRow.x + kSortNameRow.w - 22, kSortNameRow.y + (kSortNameRow.h - kLabelScale * kGlyph) / 2,
              kLabelScale, listOpen ? "^" : "v");
+    const float volumeTextY = kVolumeTrack.y + (kVolumeTrack.h - kLabelScale * kGlyph) / 2;
+    SDL_SetRenderDrawColor(renderer, 235, 235, 235, 255);
+    drawText(renderer, density, 12, volumeTextY, kLabelScale, "Volume");
+    const SDL_FRect track{kVolumeTrack.x, kVolumeTrack.y + kVolumeTrack.h / 2 - 3, kVolumeTrack.w, 6};
+    SDL_SetRenderDrawColor(renderer, 62, 62, 70, 255);
+    SDL_RenderFillRect(renderer, &track);
+    const SDL_FRect filled{track.x, track.y, track.w * volume, track.h};
+    SDL_SetRenderDrawColor(renderer, 60, 120, 200, 255);
+    SDL_RenderFillRect(renderer, &filled);
+    const Uint8 knobShade = SDL_PointInRectFloat(&mouse, &kVolumeTrack) ? 255 : 215;
+    SDL_SetRenderDrawColor(renderer, knobShade, knobShade, knobShade, 255);
+    const SDL_FRect knob{kVolumeTrack.x + kVolumeTrack.w * volume - 5, kVolumeTrack.y + 4, 10, kVolumeTrack.h - 8};
+    SDL_RenderFillRect(renderer, &knob);
+    char percent[8];
+    std::snprintf(percent, sizeof percent, "%d%%", static_cast<int>(std::lround(volume * 100)));
+    SDL_SetRenderDrawColor(renderer, 235, 235, 235, 255);
+    drawText(renderer, density, kControlWidth - 12 - kLabelScale * kGlyph * std::strlen(percent), volumeTextY, kLabelScale, percent);
     if (listOpen) {
         for (int k = 0, slot = 0; k < kSortCount; ++k) {
             if (!listed(k, general)) continue;
@@ -600,6 +625,7 @@ int main(int argc, char** argv) {
     PendingPath pendingImage, pendingAudio;
     bool listOpen = false;
     bool general = false;
+    bool volumeDragging = false;
     static constexpr SDL_DialogFileFilter kImageFilters[] = {{"Images (PNG, JPG, BMP)", "png;jpg;jpeg;bmp"}};
     static constexpr SDL_DialogFileFilter kAudioFilters[] = {{"Audio (WAV, M4A)", "wav;m4a"}};
 
@@ -608,10 +634,18 @@ int main(int argc, char** argv) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) quit = true;
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT) volumeDragging = false;
+            if (event.type == SDL_EVENT_MOUSE_MOTION && volumeDragging && event.motion.windowID == SDL_GetWindowID(controlWindow))
+                swapSound.setVolume(volumeAt(event.motion.x));
             if (event.type != SDL_EVENT_MOUSE_BUTTON_DOWN || event.button.button != SDL_BUTTON_LEFT ||
                 event.button.windowID != SDL_GetWindowID(controlWindow))
                 continue;
             const SDL_FPoint p{event.button.x, event.button.y};
+            if (SDL_PointInRectFloat(&p, &kVolumeTrack)) {
+                volumeDragging = true;
+                swapSound.setVolume(volumeAt(p.x));
+                continue;
+            }
             if (SDL_PointInRectFloat(&p, &kSortNameRow)) {
                 listOpen = !listOpen;
                 setListOpen(controlWindow, listOpen, general);
@@ -675,7 +709,7 @@ int main(int argc, char** argv) {
             }
         }
         drawSortWindow(sortWindow, sortRenderer, image, stalinImage, player);
-        drawControlWindow(controlWindow, controlRenderer, player.algorithm, listOpen, general);
+        drawControlWindow(controlWindow, controlRenderer, player.algorithm, listOpen, general, swapSound.volume);
     }
 
     swapSound.close();

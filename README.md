@@ -10,7 +10,7 @@
 - macOS: `ImgSorting-macos-universal.zip`. 실행이 막히면 `xattr -d com.apple.quarantine ImgSorting`
 - Linux: `ImgSorting-linux-x64.tar.gz`
 
-Controls 창에서 이미지·오디오(WAV·M4A) 불러오기, 시작·정지, 정렬 선택. Linux에서 M4A는 ffmpeg 필요.
+Controls 창에서 이미지·오디오(WAV·M4A) 불러오기, 시작·정지, 정렬 선택, 음량 조절(Volume 슬라이더). Linux에서 M4A는 ffmpeg 필요.
 
 ## 정렬 38종 (재생 순서)
 
