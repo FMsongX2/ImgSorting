@@ -27,6 +27,8 @@ namespace {
 constexpr int kStripCount = 100;
 constexpr float kSortSeconds = 10.f;
 constexpr float kAfterDoneSilence = 0.8f;
+constexpr float kSweepSeconds = 1.f;
+constexpr float kSweptHoldSeconds = 0.2f;
 constexpr float kMaxFrameSeconds = 0.1f;
 constexpr float kHeaderHeight = 36.f;
 constexpr float kOnsetRatio = 0.1f;
@@ -40,10 +42,10 @@ constexpr float kSyllableGapSeconds = 0.02f;
 constexpr float kMaxSyllableSeconds = 1.5f;
 constexpr float kControlWidth = 560.f, kControlHeight = 144.f;
 constexpr int kListColumns = 3;
-constexpr int kListRows = (kSortCount + kListColumns - 1) / kListColumns;
 constexpr float kListItemW = (kControlWidth - 8.f * (kListColumns + 1)) / kListColumns;
 constexpr float kListItemH = 22.f;
-constexpr float kListHeight = kListRows * (kListItemH + 4.f) + 4.f;
+constexpr int kGeneralCount = static_cast<int>(
+    std::count_if(std::begin(kSortAlgorithms), std::end(kSortAlgorithms), [](const SortAlgorithm& a) { return a.general; }));
 constexpr float kGlyph = SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE;
 constexpr const char* kSavedAudioExtensions[] = {".wav", ".m4a"};
 
@@ -62,6 +64,7 @@ struct Player {
     bool finalePlayed = false;
     bool gaveUp = false;
     float doneSilence = 0;
+    float sweep = 0;
     Op last{Op::Compare, -1, -1};
 
     std::vector<int> shuffled() {
@@ -79,12 +82,18 @@ struct Player {
         usesWrites = std::any_of(ops.begin(), ops.end(), [](const Op& op) { return op.kind == Op::Write; });
         step = 0;
         comparisons = swaps = writes = 0;
-        elapsed = stepBudget = doneSilence = 0;
+        elapsed = stepBudget = doneSilence = sweep = 0;
         finalePlayed = gaveUp = false;
         last = {Op::Compare, -1, -1};
     }
 
     bool finished() const { return step >= ops.size(); }
+
+    int sweptStrips() const {
+        if (!finished() || gaveUp) return 0;
+        return std::min(kStripCount, static_cast<int>(kStripCount * sweep / kSweepSeconds));
+    }
+    bool revealed() const { return !gaveUp && sweep >= kSweepSeconds + kSweptHoldSeconds; }
 
     void apply(const Op& op) {
         applyOp(order, op);
@@ -99,6 +108,7 @@ struct Player {
         dt = std::min(dt, kMaxFrameSeconds);
         if (finished()) {
             last = {Op::Compare, -1, -1};
+            sweep += dt;
             return;
         }
         elapsed += dt;
@@ -249,7 +259,7 @@ struct SwapSound {
     }
 };
 
-enum class Action { ImportImage, ImportAudio, Fit, Prev, Next, Start, Stop, Restart, Shuffle };
+enum class Action { ImportImage, ImportAudio, Fit, General, Prev, Next, Start, Stop, Restart, Shuffle };
 
 struct Button {
     SDL_FRect rect;
@@ -259,9 +269,10 @@ struct Button {
 
 constexpr SDL_FRect kSortNameRow{56, 52, 448, 40};
 const Button kButtons[] = {
-    {{8, 8, 180, 36}, "Import Image", Action::ImportImage},
-    {{196, 8, 180, 36}, "Import Audio", Action::ImportAudio},
-    {{384, 8, 168, 36}, "Fit", Action::Fit},
+    {{8, 8, 164, 36}, "Import Image", Action::ImportImage},
+    {{180, 8, 164, 36}, "Import Audio", Action::ImportAudio},
+    {{352, 8, 80, 36}, "Fit", Action::Fit},
+    {{440, 8, 112, 36}, "General", Action::General},
     {{8, 52, 48, 40}, "<", Action::Prev},
     {{504, 52, 48, 40}, ">", Action::Next},
     {{8, 100, 130, 36}, "Start", Action::Start},
@@ -402,9 +413,10 @@ void drawSortWindow(SDL_Window* window, SDL_Renderer* renderer, SDL_Texture* ima
         const SDL_FRect src{player.order[i] * srcStrip + inset, 0, srcStrip - 2 * inset, imageH};
         SDL_RenderTexture(renderer, image, &src, &dst);
     }
+    const int swept = player.sweptStrips();
     if (dstStrip >= 4) {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 70);
-        for (int i = 1; i < kStripCount; ++i) {
+        for (int i = swept + 1; i < kStripCount; ++i) {
             const SDL_FRect line{dx + i * dstStrip - 0.5f, dy, 1, dh};
             SDL_RenderFillRect(renderer, &line);
         }
@@ -422,21 +434,34 @@ void drawSortWindow(SDL_Window* window, SDL_Renderer* renderer, SDL_Texture* ima
         }
     }
 
-    if (player.finished() && !player.gaveUp) {
+    if (swept > 0 && !player.revealed()) {
         SDL_SetRenderDrawColor(renderer, 120, 200, 255, 80);
-        const SDL_FRect tint{dx, dy, dw, dh};
+        const SDL_FRect tint{dx, dy, swept * dstStrip, dh};
         SDL_RenderFillRect(renderer, &tint);
     }
     SDL_RenderPresent(renderer);
 }
 
-SDL_FRect listItemRect(int k) {
-    const int col = k / kListRows, row = k % kListRows;
+bool listed(int k, bool general) { return !general || kSortAlgorithms[k].general; }
+
+int stepSort(int current, int delta, bool general) {
+    int k = current;
+    do k = (k + delta + kSortCount) % kSortCount;
+    while (!listed(k, general));
+    return k;
+}
+
+int listRows(bool general) { return ((general ? kGeneralCount : kSortCount) + kListColumns - 1) / kListColumns; }
+
+SDL_FRect listItemRect(int slot, bool general) {
+    const int rows = listRows(general);
+    const int col = slot / rows, row = slot % rows;
     return {8 + col * (kListItemW + 8), kControlHeight + row * (kListItemH + 4), kListItemW, kListItemH};
 }
 
-void setListOpen(SDL_Window* window, bool open) {
-    const int h = static_cast<int>(kControlHeight + (open ? kListHeight : 0));
+void setListOpen(SDL_Window* window, bool open, bool general) {
+    const float listHeight = listRows(general) * (kListItemH + 4.f) + 4.f;
+    const int h = static_cast<int>(kControlHeight + (open ? listHeight : 0));
     SDL_SetWindowSize(window, static_cast<int>(kControlWidth), h);
     int x = 0, y = 0, top = 0, left = 0, bottom = 0, right = 0;
     SDL_GetWindowPosition(window, &x, &y);
@@ -447,7 +472,7 @@ void setListOpen(SDL_Window* window, bool open) {
     if (y + h > screenBottom) SDL_SetWindowPosition(window, x, std::max(usable.y + top, screenBottom - h));
 }
 
-void drawControlWindow(SDL_Window* window, SDL_Renderer* renderer, int current, bool listOpen) {
+void drawControlWindow(SDL_Window* window, SDL_Renderer* renderer, int current, bool listOpen, bool general) {
     const float density = SDL_GetWindowPixelDensity(window);
     SDL_SetRenderScale(renderer, density, density);
     SDL_SetRenderDrawColor(renderer, 32, 32, 36, 255);
@@ -457,7 +482,8 @@ void drawControlWindow(SDL_Window* window, SDL_Renderer* renderer, int current, 
     constexpr float kLabelScale = 1.5f;
     for (const Button& b : kButtons) {
         const bool hover = SDL_PointInRectFloat(&mouse, &b.rect);
-        SDL_SetRenderDrawColor(renderer, hover ? 90 : 62, hover ? 90 : 62, hover ? 100 : 70, 255);
+        if (b.action == Action::General && general) SDL_SetRenderDrawColor(renderer, 60, 120, 200, 255);
+        else SDL_SetRenderDrawColor(renderer, hover ? 90 : 62, hover ? 90 : 62, hover ? 100 : 70, 255);
         SDL_RenderFillRect(renderer, &b.rect);
         SDL_SetRenderDrawColor(renderer, 235, 235, 235, 255);
         const float textW = kLabelScale * kGlyph * std::strlen(b.label);
@@ -477,8 +503,9 @@ void drawControlWindow(SDL_Window* window, SDL_Renderer* renderer, int current, 
     drawText(renderer, density, kSortNameRow.x + kSortNameRow.w - 22, kSortNameRow.y + (kSortNameRow.h - kLabelScale * kGlyph) / 2,
              kLabelScale, listOpen ? "^" : "v");
     if (listOpen) {
-        for (int k = 0; k < kSortCount; ++k) {
-            const SDL_FRect item = listItemRect(k);
+        for (int k = 0, slot = 0; k < kSortCount; ++k) {
+            if (!listed(k, general)) continue;
+            const SDL_FRect item = listItemRect(slot++, general);
             const bool hover = SDL_PointInRectFloat(&mouse, &item);
             if (k == current) SDL_SetRenderDrawColor(renderer, 60, 120, 200, 255);
             else SDL_SetRenderDrawColor(renderer, hover ? 90 : 52, hover ? 90 : 52, hover ? 100 : 60, 255);
@@ -572,6 +599,7 @@ int main(int argc, char** argv) {
         SDL_Log("swap sound not loaded: %s", SDL_GetError());
     PendingPath pendingImage, pendingAudio;
     bool listOpen = false;
+    bool general = false;
     static constexpr SDL_DialogFileFilter kImageFilters[] = {{"Images (PNG, JPG, BMP)", "png;jpg;jpeg;bmp"}};
     static constexpr SDL_DialogFileFilter kAudioFilters[] = {{"Audio (WAV, M4A)", "wav;m4a"}};
 
@@ -586,15 +614,16 @@ int main(int argc, char** argv) {
             const SDL_FPoint p{event.button.x, event.button.y};
             if (SDL_PointInRectFloat(&p, &kSortNameRow)) {
                 listOpen = !listOpen;
-                setListOpen(controlWindow, listOpen);
+                setListOpen(controlWindow, listOpen, general);
                 continue;
             }
-            for (int k = 0; listOpen && k < kSortCount; ++k) {
-                const SDL_FRect item = listItemRect(k);
+            for (int k = 0, slot = 0; listOpen && k < kSortCount; ++k) {
+                if (!listed(k, general)) continue;
+                const SDL_FRect item = listItemRect(slot++, general);
                 if (!SDL_PointInRectFloat(&p, &item)) continue;
                 player.load(k, player.shuffled());
                 listOpen = false;
-                setListOpen(controlWindow, false);
+                setListOpen(controlWindow, false, general);
             }
             for (const Button& b : kButtons) {
                 if (!SDL_PointInRectFloat(&p, &b.rect)) continue;
@@ -606,9 +635,14 @@ int main(int argc, char** argv) {
                     SDL_ShowOpenFileDialog(onFileChosen, &pendingAudio, controlWindow, kAudioFilters, 1, nullptr, false);
                     break;
                 case Action::Fit: fitWindowToImage(sortWindow, image); break;
+                case Action::General:
+                    general = !general;
+                    if (!listed(player.algorithm, general)) player.load(stepSort(player.algorithm, 1, general), player.shuffled());
+                    if (listOpen) setListOpen(controlWindow, true, general);
+                    break;
                 case Action::Shuffle: player.load(player.algorithm, player.shuffled()); break;
-                case Action::Prev: player.load((player.algorithm + kSortCount - 1) % kSortCount, player.shuffled()); break;
-                case Action::Next: player.load((player.algorithm + 1) % kSortCount, player.shuffled()); break;
+                case Action::Prev: player.load(stepSort(player.algorithm, -1, general), player.shuffled()); break;
+                case Action::Next: player.load(stepSort(player.algorithm, 1, general), player.shuffled()); break;
                 case Action::Start: player.running = true; break;
                 case Action::Stop: player.running = false; break;
                 case Action::Restart:
@@ -633,15 +667,15 @@ int main(int argc, char** argv) {
             if (!player.finalePlayed) {
                 if (!player.gaveUp) swapSound.playFull();
                 player.finalePlayed = true;
-            } else if (!swapSound.idle()) {
+            } else if (!swapSound.idle() || (!player.gaveUp && !player.revealed())) {
                 player.doneSilence = 0;
             } else if ((player.doneSilence += std::min(dt, kMaxFrameSeconds)) >= kAfterDoneSilence) {
-                if (player.algorithm + 1 < kSortCount) player.load(player.algorithm + 1, player.shuffled());
+                if (const int next = stepSort(player.algorithm, 1, general); next > player.algorithm) player.load(next, player.shuffled());
                 else quit = true;
             }
         }
         drawSortWindow(sortWindow, sortRenderer, image, stalinImage, player);
-        drawControlWindow(controlWindow, controlRenderer, player.algorithm, listOpen);
+        drawControlWindow(controlWindow, controlRenderer, player.algorithm, listOpen, general);
     }
 
     swapSound.close();

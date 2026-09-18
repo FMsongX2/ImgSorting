@@ -18,6 +18,8 @@ Bubble, Cocktail Shaker, Odd-Even, Gnome, Comb, Selection, Cycle, Insertion, Pan
 
 Bozo·Bogobogo·Bogo는 끝나지 않아 10초 뒤 포기함. 마지막 Bogo 뒤 종료.
 
+General을 켜면 Bubble, Selection, Insertion, Merge, Quick, Heap, Shell, Counting, Bucket, Radix(LSD), Stalin, Bogo만 목록·재생에 남김.
+
 ## Podman (Linux)
 
 저장소를 받은 뒤 그 폴더(`CMakeLists.txt`가 있는 곳)에서 실행.

@@ -13,50 +13,51 @@ struct Op {
 struct SortAlgorithm {
     const char* name;
     const char* complexity;
+    bool general = false;
     bool endless = false;
 };
 
 inline constexpr int kPurged = -1;
 
 inline constexpr SortAlgorithm kSortAlgorithms[] = {
-    {"Bubble Sort", "O(n^2)"},
+    {"Bubble Sort", "O(n^2)", true},
     {"Cocktail Shaker Sort", "O(n^2)"},
     {"Odd-Even Sort", "O(n^2)"},
     {"Gnome Sort", "O(n^2)"},
     {"Comb Sort", "O(n^2)"},
-    {"Selection Sort", "O(n^2)"},
+    {"Selection Sort", "O(n^2)", true},
     {"Cycle Sort", "O(n^2)"},
-    {"Insertion Sort", "O(n^2)"},
+    {"Insertion Sort", "O(n^2)", true},
     {"Pancake Sort", "O(n^2)"},
-    {"Merge Sort", "O(n log n)"},
+    {"Merge Sort", "O(n log n)", true},
     {"Block Merge Sort", "O(n log n)"},
     {"In-Place Merge Sort", "O(n log^2 n)"},
     {"Tim Sort", "O(n log n)"},
     {"Patience Sort", "O(n log n)"},
     {"Strand Sort", "O(n^2)"},
-    {"Quick Sort", "O(n log n)"},
+    {"Quick Sort", "O(n log n)", true},
     {"PDQ Sort", "O(n log n)"},
     {"Tournament Sort", "O(n log n)"},
     {"Tree Sort", "O(n log n)"},
-    {"Heap Sort", "O(n log n)"},
+    {"Heap Sort", "O(n log n)", true},
     {"Intro Sort", "O(n log n)"},
     {"Smooth Sort", "O(n log n)"},
-    {"Shell Sort", "O(n^1.5)"},
-    {"Counting Sort", "O(n+k)"},
+    {"Shell Sort", "O(n^1.5)", true},
+    {"Counting Sort", "O(n+k)", true},
     {"Pigeonhole Sort", "O(n+r)"},
-    {"Bucket Sort", "O(n+k)"},
+    {"Bucket Sort", "O(n+k)", true},
     {"Flash Sort", "O(n+r)"},
     {"Radix Sort (MSD)", "O(n*k/d)"},
     {"Radix Sort (in-place)", "O(n*k)"},
-    {"Radix Sort (LSD)", "O(d(n+b))"},
+    {"Radix Sort (LSD)", "O(d(n+b))", true},
     {"Gravity Sort", "O(S)"},
     {"Bitonic Sort", "O(n log^2 n)"},
     {"Stooge Sort", "O(n^2.71)"},
     {"Slow Sort", "O(n^(log n/2))"},
-    {"Stalin Sort", "O(n)"},
-    {"Bozo Sort", "O(n!)", true},
-    {"Bogobogo Sort", "O(n!^(n-k))", true},
-    {"Bogo Sort", "O(n*n!)", true},
+    {"Stalin Sort", "O(n)", true},
+    {"Bozo Sort", "O(n!)", false, true},
+    {"Bogobogo Sort", "O(n!^(n-k))", false, true},
+    {"Bogo Sort", "O(n*n!)", true, true},
 };
 inline constexpr int kSortCount = static_cast<int>(std::size(kSortAlgorithms));
 static_assert(std::string_view(kSortAlgorithms[kSortCount - 1].name) == "Bogo Sort", "보고 정렬은 항상 마지막");
