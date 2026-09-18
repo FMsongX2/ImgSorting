@@ -18,7 +18,11 @@ Bubble, Cocktail Shaker, Odd-Even, Gnome, Comb, Selection, Cycle, Insertion, Pan
 
 Bozo·Bogobogo·Bogo는 끝나지 않아 10초 뒤 포기함. 마지막 Bogo 뒤 종료.
 
-General을 켜면 Bubble, Selection, Insertion, Merge, Quick, Heap, Shell, Counting, Bucket, Radix(LSD), Stalin, Bogo만 목록·재생에 남김.
+## General 모드
+
+38종이 많을 때 학부에서 배우는 대표 정렬만 보는 모드. Controls 창 General 버튼으로 켜고 끔(켜지면 파란색). 켜면 정렬 목록, `<` `>`, 자동 재생이 아래 12종만 돌고 Bogo 뒤 종료함.
+
+Bubble, Selection, Insertion, Merge, Quick, Heap, Shell, Counting, Bucket, Radix(LSD), Stalin, Bogo
 
 ## Podman (Linux)
 
