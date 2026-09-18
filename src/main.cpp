@@ -1,3 +1,4 @@
+#include "audio_decode.h"
 #include "sorts.h"
 
 #include <SDL3/SDL.h>
@@ -5,6 +6,7 @@
 #include <stb_image.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -43,6 +45,7 @@ constexpr float kListItemW = (kControlWidth - 8.f * (kListColumns + 1)) / kListC
 constexpr float kListItemH = 22.f;
 constexpr float kListHeight = kListRows * (kListItemH + 4.f) + 4.f;
 constexpr float kGlyph = SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE;
+constexpr const char* kSavedAudioExtensions[] = {".wav", ".m4a"};
 
 struct Player {
     std::mt19937 rng{std::random_device{}()};
@@ -145,17 +148,34 @@ struct SwapSound {
         SDL_DestroyAudioStream(stream);
         return nullptr;
     }
-    bool load(const char* path) { return load(SDL_IOFromFile(path, "rb"), path); }
+    bool load(const char* path) {
+        if (load(SDL_IOFromFile(path, "rb"), path)) return true;
+        std::vector<float> decoded;
+        int channels = 0, rate = 0;
+        if (!decodeAudioFile(path, decoded, channels, rate)) {
+#if defined(__linux__)
+            SDL_SetError("%s: cannot decode (WAV or M4A; M4A needs ffmpeg on Linux)", path);
+#else
+            SDL_SetError("%s: cannot decode (WAV or M4A)", path);
+#endif
+            return false;
+        }
+        const SDL_AudioSpec spec{SDL_AUDIO_F32, channels, rate};
+        return setSamples(spec, reinterpret_cast<const Uint8*>(decoded.data()), static_cast<int>(decoded.size() * sizeof(float)), path);
+    }
     bool load(SDL_IOStream* io, const char* label) {
         SDL_AudioSpec wavSpec{};
         Uint8* wavData = nullptr;
         Uint32 wavSize = 0;
         if (!SDL_LoadWAV_IO(io, true, &wavSpec, &wavData, &wavSize)) return false;
+        const bool ok = setSamples(wavSpec, wavData, static_cast<int>(wavSize), label);
+        SDL_free(wavData);
+        return ok;
+    }
+    bool setSamples(const SDL_AudioSpec& spec, const Uint8* data, int size, const char* label) {
         Uint8* converted = nullptr;
         int convertedSize = 0;
-        const bool ok = SDL_ConvertAudioSamples(&wavSpec, wavData, static_cast<int>(wavSize), &kSpec, &converted, &convertedSize);
-        SDL_free(wavData);
-        if (!ok) return false;
+        if (!SDL_ConvertAudioSamples(&spec, data, size, &kSpec, &converted, &convertedSize)) return false;
         const auto* all = reinterpret_cast<const float*>(converted);
         const size_t count = static_cast<size_t>(convertedSize) / sizeof(float);
         const size_t start = soundStart(all, count);
@@ -488,13 +508,19 @@ void keepCopy(const std::string& from, const std::string& to) {
     if (!SDL_CopyFile(from.c_str(), to.c_str())) SDL_Log("failed to keep %s: %s", from.c_str(), SDL_GetError());
 }
 
-void importSound(const std::string& path, SwapSound& sound, const std::string& savedPath, SDL_Window* parent) {
+void importSound(const std::string& path, SwapSound& sound, const std::string& savedBase, SDL_Window* parent) {
     if (!sound.load(path.c_str())) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Audio import failed", SDL_GetError(), parent);
         return;
     }
     sound.playFull();
-    keepCopy(path, savedPath);
+    if (savedBase.empty()) return;
+    std::string ext = std::filesystem::path(path).extension().string();
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext != ".m4a") ext = ".wav";
+    for (const char* other : kSavedAudioExtensions)
+        if (ext != other) SDL_RemovePath((savedBase + other).c_str());
+    keepCopy(path, savedBase + ext);
 }
 
 }
@@ -525,7 +551,7 @@ int main(int argc, char** argv) {
 
     char* prefDir = SDL_GetPrefPath("FMsongX2", "ImgSorting");
     const std::string savedImagePath = prefDir ? std::string(prefDir) + "last_image" : "";
-    const std::string savedSwapPath = prefDir ? std::string(prefDir) + "last_audio.wav" : "";
+    const std::string savedAudioBase = prefDir ? std::string(prefDir) + "last_audio" : "";
     SDL_free(prefDir);
 
     SDL_Texture* image = argc > 1 ? loadImage(sortRenderer, argv[1]) : nullptr;
@@ -539,12 +565,15 @@ int main(int argc, char** argv) {
     player.load(0, player.shuffled());
     SwapSound swapSound;
     swapSound.open();
-    if (!swapSound.load(savedSwapPath.c_str()) && !swapSound.load(SDL_IOFromConstMem(kDefaultWav, kDefaultWavSize), "built-in default.wav"))
+    bool savedLoaded = false;
+    for (const char* ext : kSavedAudioExtensions)
+        if (!savedLoaded && !savedAudioBase.empty()) savedLoaded = swapSound.load((savedAudioBase + ext).c_str());
+    if (!savedLoaded && !swapSound.load(SDL_IOFromConstMem(kDefaultWav, kDefaultWavSize), "built-in default.wav"))
         SDL_Log("swap sound not loaded: %s", SDL_GetError());
     PendingPath pendingImage, pendingAudio;
     bool listOpen = false;
     static constexpr SDL_DialogFileFilter kImageFilters[] = {{"Images (PNG, JPG, BMP)", "png;jpg;jpeg;bmp"}};
-    static constexpr SDL_DialogFileFilter kAudioFilters[] = {{"Audio (WAV)", "wav"}};
+    static constexpr SDL_DialogFileFilter kAudioFilters[] = {{"Audio (WAV, M4A)", "wav;m4a"}};
 
     Uint64 prev = SDL_GetTicksNS();
     for (bool quit = false; !quit;) {
@@ -593,7 +622,7 @@ int main(int argc, char** argv) {
         if (const std::string path = pendingImage.take(); !path.empty() && importImage(path, sortRenderer, image, player, controlWindow))
             keepCopy(path, savedImagePath);
         if (const std::string path = pendingAudio.take(); !path.empty())
-            importSound(path, swapSound, savedSwapPath, controlWindow);
+            importSound(path, swapSound, savedAudioBase, controlWindow);
 
         const Uint64 now = SDL_GetTicksNS();
         const float dt = (now - prev) / 1e9f;

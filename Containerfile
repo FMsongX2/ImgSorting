@@ -6,7 +6,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         libX11 libXext libXcursor libXi libXrandr libXfixes libXScrnSaver libxkbcommon libxkbcommon-x11 \
         libwayland-client libwayland-cursor libwayland-egl libdecor \
         pulseaudio-libs pipewire-libs alsa-lib \
-        zenity \
+        zenity ffmpeg-free \
     && dnf clean all
 
 WORKDIR /app
@@ -18,6 +18,6 @@ COPY assets assets
 
 RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build -j"$(nproc)" \
-    && ./build/sort_check
+    && ctest --test-dir build --output-on-failure
 
 ENTRYPOINT ["/app/build/ImgSorting"]
