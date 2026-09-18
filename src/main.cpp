@@ -15,6 +15,9 @@
 #include <string>
 #include <utility>
 
+extern const unsigned char kDefaultWav[];
+extern const std::size_t kDefaultWavSize;
+
 namespace {
 
 constexpr int kStripCount = 100;
@@ -24,8 +27,6 @@ constexpr float kMaxFrameSeconds = 0.1f;
 constexpr float kHeaderHeight = 36.f;
 constexpr float kOnsetRatio = 0.1f;
 constexpr float kPreRollSeconds = 0.005f;
-constexpr const char* kSwapSoundPath = ASSET_DIR "/default.wav";
-constexpr const char* kStalinImagePath = IMAGE_DIR "/stalin.jpeg";
 constexpr float kTriggerSeconds = 2048.f / 48000.f;
 constexpr int kVoiceCount = 32;
 constexpr float kVoiceGain = 0.25f;
@@ -142,11 +143,12 @@ struct SwapSound {
         SDL_DestroyAudioStream(stream);
         return nullptr;
     }
-    bool load(const char* path) {
+    bool load(const char* path) { return load(SDL_IOFromFile(path, "rb"), path); }
+    bool load(SDL_IOStream* io, const char* label) {
         SDL_AudioSpec wavSpec{};
         Uint8* wavData = nullptr;
         Uint32 wavSize = 0;
-        if (!SDL_LoadWAV(path, &wavSpec, &wavData, &wavSize)) return false;
+        if (!SDL_LoadWAV_IO(io, true, &wavSpec, &wavData, &wavSize)) return false;
         Uint8* converted = nullptr;
         int convertedSize = 0;
         const bool ok = SDL_ConvertAudioSamples(&wavSpec, wavData, static_cast<int>(wavSize), &kSpec, &converted, &convertedSize);
@@ -158,7 +160,7 @@ struct SwapSound {
         samples.assign(all + start, all + count);
         SDL_free(converted);
         syllableEnd = std::min(firstGap(samples), static_cast<size_t>(kMaxSyllableSeconds * kSpec.freq) * kSpec.channels);
-        SDL_Log("swap sound: %s, leading silence trimmed %.0f ms, syllable %.0f ms, full %.0f ms", path,
+        SDL_Log("swap sound: %s, leading silence trimmed %.0f ms, syllable %.0f ms, full %.0f ms", label,
                 1000.0 * static_cast<double>(start) / kSpec.channels / kSpec.freq,
                 1000.0 * static_cast<double>(syllableEnd) / kSpec.channels / kSpec.freq,
                 1000.0 * static_cast<double>(samples.size()) / kSpec.channels / kSpec.freq);
@@ -520,15 +522,17 @@ int main(int argc, char** argv) {
     if (argc > 1 && !image) SDL_Log("failed to load %s: %s", argv[1], SDL_GetError());
     if (!image && !savedImagePath.empty()) image = loadImage(sortRenderer, savedImagePath.c_str());
     if (!image) image = makeGradient(sortRenderer, 960, 540);
-    SDL_Texture* stalinImage = loadImage(sortRenderer, kStalinImagePath);
+    const char* basePath = SDL_GetBasePath();
+    SDL_Texture* stalinImage = loadImage(sortRenderer, (std::string(basePath ? basePath : "") + "Images/stalin.jpeg").c_str());
+    if (!stalinImage) stalinImage = loadImage(sortRenderer, IMAGE_DIR "/stalin.jpeg");
     if (!stalinImage) SDL_Log("stalin image not loaded: %s", SDL_GetError());
 
     Player player;
     player.load(0, player.shuffled());
     SwapSound swapSound;
     swapSound.open();
-    if (!swapSound.load(savedSwapPath.c_str()) && !swapSound.load(kSwapSoundPath))
-        SDL_Log("swap sound not loaded (%s): %s", kSwapSoundPath, SDL_GetError());
+    if (!swapSound.load(savedSwapPath.c_str()) && !swapSound.load(SDL_IOFromConstMem(kDefaultWav, kDefaultWavSize), "built-in default.wav"))
+        SDL_Log("swap sound not loaded: %s", SDL_GetError());
     PendingPath pendingImage, pendingAudio;
     bool listOpen = false;
     static constexpr SDL_DialogFileFilter kImageFilters[] = {{"Images (PNG, JPG, BMP)", "png;jpg;jpeg;bmp"}};

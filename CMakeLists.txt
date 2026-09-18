@@ -1,10 +1,35 @@
 cmake_minimum_required(VERSION 3.24)
-project(ImgSorting CXX)
+project(ImgSorting C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-find_package(SDL3 3.2 REQUIRED CONFIG)
+option(IMGSORTING_VENDOR_SDL "Build SDL3 from source and link it statically" OFF)
+if(IMGSORTING_VENDOR_SDL)
+    include(FetchContent)
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.4.16
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(SDL3)
+    set(IMGSORTING_SDL SDL3::SDL3-static)
+else()
+    find_package(SDL3 3.2 REQUIRED CONFIG)
+    set(IMGSORTING_SDL SDL3::SDL3)
+endif()
+
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/default.wav)
+file(READ ${CMAKE_SOURCE_DIR}/assets/default.wav DEFAULT_WAV_HEX HEX)
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," DEFAULT_WAV_BYTES "${DEFAULT_WAV_HEX}")
+string(REPEAT "0x..," 16 DEFAULT_WAV_LINE)
+string(REGEX REPLACE "(${DEFAULT_WAV_LINE})" "\\1\n" DEFAULT_WAV_BYTES "${DEFAULT_WAV_BYTES}")
+file(WRITE ${CMAKE_BINARY_DIR}/default_wav.cpp.in
+    "#include <cstddef>\nextern const unsigned char kDefaultWav[] = {\n${DEFAULT_WAV_BYTES}};\nextern const std::size_t kDefaultWavSize = sizeof(kDefaultWav);\n")
+configure_file(${CMAKE_BINARY_DIR}/default_wav.cpp.in ${CMAKE_BINARY_DIR}/default_wav.cpp COPYONLY)
 
 add_library(sorts STATIC
     src/sorts.cpp
@@ -49,12 +74,11 @@ add_library(sorts STATIC
 )
 target_include_directories(sorts PUBLIC src)
 
-add_executable(ImgSorting src/main.cpp third_party/stb_image_impl.cpp)
+add_executable(ImgSorting src/main.cpp third_party/stb_image_impl.cpp ${CMAKE_BINARY_DIR}/default_wav.cpp)
+set_target_properties(ImgSorting PROPERTIES WIN32_EXECUTABLE ON)
 target_include_directories(ImgSorting PRIVATE third_party)
-target_link_libraries(ImgSorting PRIVATE sorts SDL3::SDL3)
-target_compile_definitions(ImgSorting PRIVATE
-    ASSET_DIR="${CMAKE_SOURCE_DIR}/assets"
-    IMAGE_DIR="${CMAKE_SOURCE_DIR}/Images")
+target_link_libraries(ImgSorting PRIVATE sorts ${IMGSORTING_SDL})
+target_compile_definitions(ImgSorting PRIVATE IMAGE_DIR="${CMAKE_SOURCE_DIR}/Images")
 
 enable_testing()
 add_executable(sort_check tests/sort_check.cpp)
