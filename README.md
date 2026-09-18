@@ -14,12 +14,18 @@ Controls 창에서 이미지·WAV 불러오기, 시작·정지, 정렬 선택.
 
 ## Podman (Linux)
 
+저장소를 받은 뒤 그 폴더(`CMakeLists.txt`가 있는 곳)에서 실행.
+
 ```bash
+git clone https://github.com/FMsongX2/ImgSorting.git
+cd ImgSorting
 podman build -t imgsorting .
 podman run --rm --userns=keep-id --security-opt label=disable -e DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix imgsorting
 ```
 
 ## 빌드
+
+위와 같은 저장소 폴더에서 실행.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DIMGSORTING_VENDOR_SDL=ON

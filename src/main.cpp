@@ -17,6 +17,8 @@
 
 extern const unsigned char kDefaultWav[];
 extern const std::size_t kDefaultWavSize;
+extern const unsigned char kStalinJpeg[];
+extern const std::size_t kStalinJpegSize;
 
 namespace {
 
@@ -265,11 +267,9 @@ void SDLCALL onFileChosen(void* userdata, const char* const* files, int) {
     pending->path = files[0];
 }
 
-SDL_Texture* loadImage(SDL_Renderer* renderer, const char* path) {
-    int w = 0, h = 0, channels = 0;
-    stbi_uc* pixels = stbi_load(path, &w, &h, &channels, 4);
+SDL_Texture* uploadPixels(SDL_Renderer* renderer, stbi_uc* pixels, int w, int h, const char* label) {
     if (!pixels) {
-        SDL_SetError("%s: %s", path, stbi_failure_reason());
+        SDL_SetError("%s: %s", label, stbi_failure_reason());
         return nullptr;
     }
     SDL_Surface* surface = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_RGBA32, pixels, w * 4);
@@ -277,6 +277,16 @@ SDL_Texture* loadImage(SDL_Renderer* renderer, const char* path) {
     SDL_DestroySurface(surface);
     stbi_image_free(pixels);
     return texture;
+}
+
+SDL_Texture* loadImage(SDL_Renderer* renderer, const char* path) {
+    int w = 0, h = 0, channels = 0;
+    return uploadPixels(renderer, stbi_load(path, &w, &h, &channels, 4), w, h, path);
+}
+
+SDL_Texture* loadImage(SDL_Renderer* renderer, const unsigned char* data, std::size_t size, const char* label) {
+    int w = 0, h = 0, channels = 0;
+    return uploadPixels(renderer, stbi_load_from_memory(data, static_cast<int>(size), &w, &h, &channels, 4), w, h, label);
 }
 
 SDL_Texture* makeGradient(SDL_Renderer* renderer, int w, int h) {
@@ -522,9 +532,7 @@ int main(int argc, char** argv) {
     if (argc > 1 && !image) SDL_Log("failed to load %s: %s", argv[1], SDL_GetError());
     if (!image && !savedImagePath.empty()) image = loadImage(sortRenderer, savedImagePath.c_str());
     if (!image) image = makeGradient(sortRenderer, 960, 540);
-    const char* basePath = SDL_GetBasePath();
-    SDL_Texture* stalinImage = loadImage(sortRenderer, (std::string(basePath ? basePath : "") + "Images/stalin.jpeg").c_str());
-    if (!stalinImage) stalinImage = loadImage(sortRenderer, IMAGE_DIR "/stalin.jpeg");
+    SDL_Texture* stalinImage = loadImage(sortRenderer, kStalinJpeg, kStalinJpegSize, "built-in stalin.jpeg");
     if (!stalinImage) SDL_Log("stalin image not loaded: %s", SDL_GetError());
 
     Player player;

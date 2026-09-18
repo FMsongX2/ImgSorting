@@ -22,14 +22,18 @@ else()
     set(IMGSORTING_SDL SDL3::SDL3)
 endif()
 
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/default.wav)
-file(READ ${CMAKE_SOURCE_DIR}/assets/default.wav DEFAULT_WAV_HEX HEX)
-string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," DEFAULT_WAV_BYTES "${DEFAULT_WAV_HEX}")
-string(REPEAT "0x..," 16 DEFAULT_WAV_LINE)
-string(REGEX REPLACE "(${DEFAULT_WAV_LINE})" "\\1\n" DEFAULT_WAV_BYTES "${DEFAULT_WAV_BYTES}")
-file(WRITE ${CMAKE_BINARY_DIR}/default_wav.cpp.in
-    "#include <cstddef>\nextern const unsigned char kDefaultWav[] = {\n${DEFAULT_WAV_BYTES}};\nextern const std::size_t kDefaultWavSize = sizeof(kDefaultWav);\n")
-configure_file(${CMAKE_BINARY_DIR}/default_wav.cpp.in ${CMAKE_BINARY_DIR}/default_wav.cpp COPYONLY)
+function(embed_file source symbol)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${source})
+    file(READ ${source} hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," bytes "${hex}")
+    string(REPEAT "0x..," 16 line)
+    string(REGEX REPLACE "(${line})" "\\1\n" bytes "${bytes}")
+    file(WRITE ${CMAKE_BINARY_DIR}/${symbol}.cpp.in
+        "#include <cstddef>\nextern const unsigned char ${symbol}[] = {\n${bytes}};\nextern const std::size_t ${symbol}Size = sizeof(${symbol});\n")
+    configure_file(${CMAKE_BINARY_DIR}/${symbol}.cpp.in ${CMAKE_BINARY_DIR}/${symbol}.cpp COPYONLY)
+endfunction()
+embed_file(${CMAKE_SOURCE_DIR}/assets/default.wav kDefaultWav)
+embed_file(${CMAKE_SOURCE_DIR}/assets/stalin.jpeg kStalinJpeg)
 
 add_library(sorts STATIC
     src/sorts.cpp
@@ -74,11 +78,10 @@ add_library(sorts STATIC
 )
 target_include_directories(sorts PUBLIC src)
 
-add_executable(ImgSorting src/main.cpp third_party/stb_image_impl.cpp ${CMAKE_BINARY_DIR}/default_wav.cpp)
+add_executable(ImgSorting src/main.cpp third_party/stb_image_impl.cpp ${CMAKE_BINARY_DIR}/kDefaultWav.cpp ${CMAKE_BINARY_DIR}/kStalinJpeg.cpp)
 set_target_properties(ImgSorting PROPERTIES WIN32_EXECUTABLE ON)
 target_include_directories(ImgSorting PRIVATE third_party)
 target_link_libraries(ImgSorting PRIVATE sorts ${IMGSORTING_SDL})
-target_compile_definitions(ImgSorting PRIVATE IMAGE_DIR="${CMAKE_SOURCE_DIR}/Images")
 
 enable_testing()
 add_executable(sort_check tests/sort_check.cpp)
